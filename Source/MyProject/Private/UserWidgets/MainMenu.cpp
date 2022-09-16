@@ -54,15 +54,29 @@ void UMainMenu::OpenHostGameMenu()
 
 void UMainMenu::InitializeSessionSearch()
 {
-	// TODO: Add out parameter and bind to OnFindGameSession so we can show a popup to join the game.
 	if(!ensure(SessionController != nullptr))
 		return;
+
+	ShowFindingSessionsWidget(true);
 
 	SessionController->FindGame(3, true);
 }
 
 void UMainMenu::QuitGame()
 {
+	OnQuitButtonPressed.Broadcast();
+}
+
+void UMainMenu::ShowFindingSessionsWidget(bool bShow)
+{
+	ESlateVisibility Visibilty = bShow ? ESlateVisibility::Visible : ESlateVisibility::Hidden;
+	FindingSession->SetVisibility(Visibilty);
+}
+
+void UMainMenu::ShowFindSessionFailed(bool bShow)
+{
+	ESlateVisibility Visibilty = bShow ? ESlateVisibility::Visible : ESlateVisibility::Hidden;
+	FindSessionFailed->SetVisibility(Visibilty);
 }
 
 void UMainMenu::OnStartupMenuButtonClicked_Callback(EButtonClicked ClickedOn)
@@ -96,7 +110,7 @@ void UMainMenu::OnHostGameMenuSettingAccepted_Callback(FHostGameSessionSettings 
 
 	OnSessionCreation.Broadcast();
 	
-	SessionController->HostGame(Settings.MaxNumberOfPlayers, Settings.SessionName, Settings.bIsLAN);
+	SessionController->HostGame(Settings.MaxNumberOfPlayers, Settings.SessionName, Settings.bIsLAN, Settings.NameOfPlayers);
 }
 
 void UMainMenu::BackButtonPressed_Callback()

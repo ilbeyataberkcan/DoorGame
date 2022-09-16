@@ -24,9 +24,9 @@ public:
 	UMultiplayerSessionSubsystem();
 
 	// Interface functions for Widget classes to call from c++
-	virtual void HostGame(const int32 MaxNumberOfPlayers, const FName& SessionName, const bool bIsLAN) override;
+	virtual void HostGame(const int32 MaxNumberOfPlayers, const FName& SessionName, const bool bIsLAN, const FString& NameOfPlayers) override;
 	virtual void FindGame(int32 MaxSearchResults, bool bIsLanQuery) override;
-	virtual void JoinGame() override;
+	virtual void JoinGame(const FOnlineSessionSearchResult& Session) override;
 
 	virtual FOnSessionCreated& GetOnSessionCreated() override;
 	virtual FOnSessionDestroyed& GetOnSessionDestroyed() override;
@@ -34,7 +34,7 @@ public:
 	virtual FOnSessionsFound& GetOnSessionFound() override;
 
 	// Controller Functions
-	void CreateSession(int32 NumberOfPublicConnections, const FName& SessionName, bool bIsLAN);
+	void CreateSession(int32 NumberOfPublicConnections, const FName& SessionName, bool bIsLAN, const FString& NameOfPlayers);
 	void DestroySession(const FName& SessionName);
 	void FindSessions(int32 MaxSearchResults, bool bIsLanQuery);
 	void JoinGameSession(const FOnlineSessionSearchResult& SessionToJoin);
@@ -61,6 +61,7 @@ protected:
 	void OnJoinSessionComplete_Callback(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 
 private:
+	
 	// Online Session Interface Delegates
 	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
 	FOnDestroySessionCompleteDelegate DestroySessionCompleteDelegate;

@@ -10,6 +10,7 @@
 #include "MainMenu.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSessionCreation);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnQuitButtonPressed);
 
 /**
  * 
@@ -27,10 +28,13 @@ public:
 	void InitializeSessionSearch();
 	void QuitGame();
 
-	FOnSessionCreation OnSessionCreation;
+	void ShowFindingSessionsWidget(bool bShow);
+	void ShowFindSessionFailed(bool bShow);
 
-protected:
-	virtual bool Initialize();
+	FOnSessionCreation OnSessionCreation;
+	FOnQuitButtonPressed OnQuitButtonPressed;
+
+	virtual bool Initialize() override;
 
 private:
 	UPROPERTY(meta=(BindWidget))
@@ -41,6 +45,12 @@ private:
 
 	UPROPERTY(meta=(BindWidget))
 	UHostGameMenu*	HostGameMenu;
+
+	UPROPERTY(meta=(BindWidget))
+	UUserWidget* FindingSession;
+
+	UPROPERTY(meta=(BindWidget))
+	UUserWidget* FindSessionFailed;
 
 	
 	UFUNCTION()

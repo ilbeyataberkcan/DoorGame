@@ -13,7 +13,7 @@ UMultiplayerSessionSubsystem::UMultiplayerSessionSubsystem()
 {
 }
 
-void UMultiplayerSessionSubsystem::HostGame(const int32 MaxNumberOfPlayers, const FName& SessionName, const bool bIsLAN)
+void UMultiplayerSessionSubsystem::HostGame(const int32 MaxNumberOfPlayers, const FName& SessionName, const bool bIsLAN, const FString& NameOfPlayers)
 {
 	IOnlineSessionPtr SessionInterface = Online::GetSessionInterface(GetWorld());
 	if(!SessionInterface.IsValid())
@@ -22,10 +22,11 @@ void UMultiplayerSessionSubsystem::HostGame(const int32 MaxNumberOfPlayers, cons
 		return;
 	}
 
+
 	const FNamedOnlineSession* ExistingSession = SessionInterface->GetNamedSession(SessionName);
 	if(ExistingSession == nullptr)
 	{
-		CreateSession(MaxNumberOfPlayers, SessionName, bIsLAN);
+		CreateSession(MaxNumberOfPlayers, SessionName, bIsLAN, NameOfPlayers);
 	}
 	else
 	{
@@ -38,9 +39,9 @@ void UMultiplayerSessionSubsystem::FindGame(int32 MaxSearchResults, bool bIsLanQ
 	FindSessions(MaxSearchResults, bIsLanQuery);
 }
 
-void UMultiplayerSessionSubsystem::JoinGame()
+void UMultiplayerSessionSubsystem::JoinGame(const FOnlineSessionSearchResult& Session)
 {
-	
+	JoinGameSession(Session);
 }
 
 FOnSessionCreated& UMultiplayerSessionSubsystem::GetOnSessionCreated()
@@ -66,7 +67,7 @@ FOnSessionsFound& UMultiplayerSessionSubsystem::GetOnSessionFound()
 
 //////////////////// BLUEPRINT EXPOSED FUNCTIONS (Controllers) ////////////////////////////
 
-void UMultiplayerSessionSubsystem::CreateSession(int32 NumberOfPublicConnections, const FName& SessionName, bool bIsLAN)
+void UMultiplayerSessionSubsystem::CreateSession(int32 NumberOfPublicConnections, const FName& SessionName, bool bIsLAN, const FString& NameOfPlayers)
 {
 	// There are two versions of getting Session Interface. One declared in Online.h the other in OnlineSubsystemUtils.h
 	// We want to use the OnlineSubsystemUtils.h version because it takes the Editor sessions into account. Because
@@ -86,6 +87,8 @@ void UMultiplayerSessionSubsystem::CreateSession(int32 NumberOfPublicConnections
 	LastSessionSettings->bAllowJoinViaPresence = true;
 	LastSessionSettings->bIsLANMatch = bIsLAN; // Is this match available only to local network
 	LastSessionSettings->bShouldAdvertise = true; // Whether or not this match can be found in the network
+	LastSessionSettings->Set(TEXT("SessionName"), SessionName.ToString(), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	LastSessionSettings->Set(TEXT("NameOfPlayers"), NameOfPlayers, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
 
 	// Add our CreateSessionCompleteDelegate to delegate list of SessionInterface.
@@ -141,6 +144,9 @@ void UMultiplayerSessionSubsystem::FindSessions(int32 MaxSearchResults, bool bIs
 		FindSessionsCompleteDelegate);
 
 	LastSessionSearch = MakeShareable(new FOnlineSessionSearch());
+	if(!LastSessionSearch.IsValid())
+		return;
+	
 	LastSessionSearch->MaxSearchResults = MaxSearchResults;
 	LastSessionSearch->bIsLanQuery = bIsLanQuery;
 
@@ -171,13 +177,15 @@ void UMultiplayerSessionSubsystem::JoinGameSession(const FOnlineSessionSearchRes
 	if (SessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession,
 	                                  SessionToJoin))
 	{
+		FInputModeGameOnly GameOnly;
+		LocalPlayer->GetPlayerController(GetWorld())->SetInputMode(GameOnly);
 		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate_Handle);
 		OnJoinSessionDelegate.Broadcast(FName() ,EOnJoinSessionCompleteResult::UnknownError);
 	}
 }
 
-//////////////////// ONLINE SESSION INTERFACE CALLBACK FUNCTIONS ////////////////////////////
 
+//////////////////// ONLINE SESSION INTERFACE CALLBACK FUNCTIONS ////////////////////////////
 
 void UMultiplayerSessionSubsystem::OnSessionsFound_Callback(bool bIsSuccessful)
 {
@@ -193,8 +201,6 @@ void UMultiplayerSessionSubsystem::OnSessionsFound_Callback(bool bIsSuccessful)
 		OnSessionsFoundDelegate.Broadcast(TArray<FOnlineSessionSearchResult>(), false);
 		return;
 	}
-
-	JoinGameSession(LastSessionSearch->SearchResults[0]);
 	
 	OnSessionsFoundDelegate.Broadcast(LastSessionSearch->SearchResults, bIsSuccessful);
 }
@@ -209,6 +215,7 @@ void UMultiplayerSessionSubsystem::OnJoinSessionComplete_Callback(FName SessionN
 	}
 
 	TryTravelToCurrentSession(SessionName);
+
 
 	OnJoinSessionDelegate.Broadcast(SessionName, Result);
 }
@@ -226,8 +233,14 @@ void UMultiplayerSessionSubsystem::OnSessionDestroyed_Callback(FName SessionName
 
 	if(bIsSuccessful)
 	{
+		FString NameOfPlayers;
+		if(!LastSessionSettings->Get(TEXT("NameOfPlayers"), NameOfPlayers))
+		{
+			NameOfPlayers = "Foo";
+		}
+		
 		UE_LOG(LogTemp, Warning, TEXT("Session Destroyed : %s"), *SessionName.ToString())
-		CreateSession(LastSessionSettings->NumPublicConnections, SessionName, LastSessionSettings->bIsLANMatch);
+		CreateSession(LastSessionSettings->NumPublicConnections, SessionName, LastSessionSettings->bIsLANMatch, NameOfPlayers);
 	}
 	
 	OnSessionDestroyedDelegate.Broadcast(bIsSuccessful);
@@ -250,7 +263,14 @@ void UMultiplayerSessionSubsystem::OnSessionCreated_Callback(FName SessionName, 
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate_Handle);
 	}
 
-	GetWorld()->ServerTravel("/Game/Levels/LobbyLevel?listen", true);
+	FString NameOfPlayers;
+	if(!LastSessionSettings->Get(TEXT("NameOfPlayers"), NameOfPlayers))
+	{
+		NameOfPlayers = "Foo";
+	}
+	UE_LOG(LogTemp, Warning, TEXT("Name Of The Players is: %s"), *NameOfPlayers)
+
+	GetWorld()->ServerTravel("/Game/ThirdPerson/Maps/ThirdPersonMap?listen?PlayerName="+NameOfPlayers, true);
 
 	OnSessionCreatedDelegate.Broadcast(bIsSuccessful);
 }

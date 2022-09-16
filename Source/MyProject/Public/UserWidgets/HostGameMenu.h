@@ -13,6 +13,7 @@ struct MYPROJECT_API FHostGameSessionSettings
 
 	int32 MaxNumberOfPlayers = 2;
 	FName SessionName = "MySession";
+	FString NameOfPlayers = "Foo";
 	bool bIsLAN = true;
 };
 
@@ -31,14 +32,16 @@ public:
 	FOnHostingSettingsAccepted	OnHostingSettingsAccepted;
 	FOnBackButtonClicked		OnBackButtonClicked;
 
-protected:
-	bool Initialize() override;
+	virtual bool Initialize() override;
 	
 private:
 
 
 	UPROPERTY(meta=(BindWidget))
 	class UEditableTextBox* ServerName_Input;
+
+	UPROPERTY(meta=(BindWidget))
+	class UEditableTextBox* NameOfPlayers_Input;
 	
 	UPROPERTY(meta=(BindWidget))
 	class USpinBox* MaxNumberOfPlayers;

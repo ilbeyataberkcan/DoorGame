@@ -2,7 +2,6 @@
 
 #include "DoorGameCharacter.h"
 
-#include "PlayerNameState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -71,7 +70,7 @@ void ADoorGameCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	// Make the Name Tag face the camera all the time. 
-	FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(PlayerNameTagComponent->GetComponentLocation(), FollowCamera->GetComponentLocation());
+	FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(PlayerNameTagComponent->GetComponentLocation(), GetWorld()->GetFirstPlayerController()->PlayerCameraManager->GetCameraLocation());
 	PlayerNameTagComponent->SetWorldRotation(LookAtRotation);
 }
 

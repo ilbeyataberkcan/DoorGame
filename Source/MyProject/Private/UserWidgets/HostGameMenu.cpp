@@ -31,6 +31,7 @@ void UHostGameMenu::OnCreateGameButtonClicked_Callback()
 	Settings.SessionName = FName(ServerName_Input->GetText().ToString());
 	Settings.MaxNumberOfPlayers = MaxNumberOfPlayers->GetValue();
 	Settings.bIsLAN = bIsLAN->IsChecked();
+	Settings.NameOfPlayers = NameOfPlayers_Input->GetText().ToString();
 	
 	OnHostingSettingsAccepted.Broadcast(Settings);
 }

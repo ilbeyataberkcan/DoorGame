@@ -3,6 +3,7 @@
 
 #include "EngineFramework/WidgetManagerSubsystem.h"
 #include "UserWidgets/MainMenu.h"
+#include "UserWidgets/Modals/SessionFoundModal.h"
 #include "Blueprint/UserWidget.h"
 #include "EngineFramework/MultiplayerSessionSubsystem.h"
 
@@ -14,7 +15,19 @@ UWidgetManagerSubsystem::UWidgetManagerSubsystem()
 	if (!ensure(MainMenuWidgetClass.Class != nullptr))
 		return;
 
+	const ConstructorHelpers::FClassFinder<USessionFoundModal> SessionFoundWidgetClass(TEXT("/Game/Blueprints/Widgets/CustomWidgets/WGT_SessionFoundModal"));
+	if(!ensure(SessionFoundWidgetClass.Class != nullptr))
+		UE_LOG(LogTemp, Warning, TEXT("Could not find specied Session Found Modal"))
+
+	const ConstructorHelpers::FClassFinder<UModalBase> QuitGameWidgetClass(TEXT("/Game/Blueprints/Widgets/CustomWidgets/WGT_VerificationModal"));
+	if(!ensure(QuitGameWidgetClass.Class != nullptr))
+		UE_LOG(LogTemp, Warning, TEXT("Could not find specied Modal"))
+	
 	MainMenuClass = MainMenuWidgetClass.Class;
+	SessionFoundModalClass = SessionFoundWidgetClass.Class;
+	QuitGameModalClass = QuitGameWidgetClass.Class;
+
+	
 }
 
 void UWidgetManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -26,7 +39,7 @@ void UWidgetManagerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		return;
 
 	WidgetController = Controller;
-	WidgetController->GetOnSessionFound().AddUObject(this, &UWidgetManagerSubsystem::OnSessionFound_Callback);
+	WidgetController->GetOnSessionFound().AddUObject(this, &UWidgetManagerSubsystem::OnSessionsFound_Callback);
 }
 
 void UWidgetManagerSubsystem::SetWidgetController(ISessionController* InController)
@@ -55,8 +68,9 @@ void UWidgetManagerSubsystem::ShowMainMenu()
 	MainMenu->AddToViewport();
 	MainMenu->bIsFocusable = true;
 	MainMenu->OnSessionCreation.AddDynamic(this, &UWidgetManagerSubsystem::OnSessionCreated_Callback);
+	MainMenu->OnQuitButtonPressed.AddDynamic(this, &UWidgetManagerSubsystem::OnQuitButtonPressed_Callback);
 
-	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController(GetWorld());
 	if (!ensure(PlayerController != nullptr))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Player Controller could not be retrieved for input mode setup"))
@@ -70,9 +84,40 @@ void UWidgetManagerSubsystem::ShowMainMenu()
 	PlayerController->SetShowMouseCursor(true);
 }
 
+void UWidgetManagerSubsystem::ShowSessionFoundModal(USessionFoundModal* Modal)
+{
+	FString NameOfTheSession;
+	if (!FoundSessions[CurrentSessionIndex].Session.SessionSettings.Get(TEXT("SessionName"),NameOfTheSession))
+	{
+		NameOfTheSession = "DefaultName";
+	}
+		
+	Modal->SetSessionName(NameOfTheSession);
+	Modal->SetAvailableSlots(
+		FoundSessions[CurrentSessionIndex].Session.NumOpenPublicConnections,
+		FoundSessions[CurrentSessionIndex].Session.SessionSettings.NumPublicConnections);
+	
+	Modal->OnModalInteracted.AddUFunction(this, "OnSessionInteraction_Callback");
+	Modal->AddToViewport();
+	Modal->StartTimer();
+}
+
+void UWidgetManagerSubsystem::HandleFoundSessions()
+{
+	USessionFoundModal* SessionModal = CreateWidget<USessionFoundModal>(GetGameInstance(), SessionFoundModalClass);
+	if(!ensure(SessionModal != nullptr))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to create Session Modal. Abording!"))
+		return;
+	}
+
+	ShowSessionFoundModal(SessionModal);
+	
+}
+
 void UWidgetManagerSubsystem::OnSessionCreated_Callback()
 {
-	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController(GetWorld());
 	if (!ensure(PlayerController != nullptr))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Player Controller could not be retrieved for input mode setup"))
@@ -85,32 +130,120 @@ void UWidgetManagerSubsystem::OnSessionCreated_Callback()
 	PlayerController->SetShowMouseCursor(false);
 }
 
-void UWidgetManagerSubsystem::OnSessionFound_Callback(const TArrayView<FOnlineSessionSearchResult>& FoundSessions, bool bIsSuccessful)
+void UWidgetManagerSubsystem::OnSessionsFound_Callback(const TArrayView<FOnlineSessionSearchResult>& Sessions, bool bIsSuccessful)
 {
 	if(bIsSuccessful)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Found Session: %s"), *FoundSessions[0].GetSessionIdStr())
+		CurrentSessionIndex = 0;
+		FoundSessions = Sessions;
+		MainMenu->ShowFindingSessionsWidget(false);
+		HandleFoundSessions();
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Could not find any sessions"))
+		MainMenu->ShowFindingSessionsWidget(false);
+		MainMenu->ShowFindSessionFailed(true);
+		FTimerHandle HideFailWidgetTimerHandle;
+		FTimerDelegate HideFailWidget;
+		HideFailWidget.BindLambda([this]()
+		{
+			MainMenu->ShowFindSessionFailed(false);
+		});
+		GetWorld()->GetTimerManager().SetTimer(HideFailWidgetTimerHandle, HideFailWidget, 2.0f, false);
+		UE_LOG(LogTemp, Warning, TEXT("Session Find failed."))
 	}
 
 }
 
 void UWidgetManagerSubsystem::OnSessionJoin_Callback(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
 {
-	if(Result != EOnJoinSessionCompleteResult::Type::Success)
-		return;
-	
-	APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
-	if (!ensure(PlayerController != nullptr))
+	if (Result == EOnJoinSessionCompleteResult::Type::Success)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Player Controller could not be retrieved for input mode setup"))
+		APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController(GetWorld());
+		if (!ensure(PlayerController != nullptr))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Player Controller could not be retrieved for input mode setup"))
+			return;
+		}
+
+		FInputModeGameOnly InputMode;
+		InputMode.SetConsumeCaptureMouseDown(true);
+		PlayerController->SetInputMode(InputMode);
+		PlayerController->SetShowMouseCursor(false);
+	}
+}
+
+void UWidgetManagerSubsystem::OnQuitButtonPressed_Callback()
+{
+	UModalBase* QuitModal = CreateWidget<UModalBase>(GetGameInstance(), QuitGameModalClass);
+	if(!ensure(QuitModal != nullptr))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to create Quit Modal. Abording!"))
 		return;
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Quiting"))
 	
-	FInputModeGameOnly InputMode;
-	PlayerController->SetInputMode(InputMode);
-	PlayerController->SetShowMouseCursor(false);
+	QuitModal->SetModalContext("Exit The Game");
+	QuitModal->OnModalInteracted.AddLambda([this](UModalBase* Modal, EModalResult Result)
+	{
+		if(Result == Accepted)
+		{
+			Modal->RemoveFromParent();
+			GetGameInstance()->GetFirstLocalPlayerController(GetWorld())->ConsoleCommand("quit");
+		}
+		else
+		{
+			Modal->RemoveFromParent();
+		}
+	});
+
+	QuitModal->AddToViewport();
+}
+
+void UWidgetManagerSubsystem::HandleSessionModalCancelOrTimeout()
+{
+	
+	USessionFoundModal* SessionModal = CreateWidget<USessionFoundModal>(GetGameInstance(), SessionFoundModalClass);
+	if(!ensure(SessionModal != nullptr))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to create Session Modal. Abording!"))
+		return;
+	}
+
+	ShowSessionFoundModal(SessionModal);
+}
+
+void UWidgetManagerSubsystem::OnSessionInteraction_Callback(UModalBase* Menu, EModalResult Result)
+{
+	switch (Result)
+	{
+	case Accepted:
+		// Join Session
+		if(CurrentSessionIndex > FoundSessions.Num())
+			CurrentSessionIndex = FoundSessions.Num() - 1;
+		
+		WidgetController->JoinGame(FoundSessions[CurrentSessionIndex]);
+		
+		break;
+
+	case Aborted:
+		Menu->RemoveFromParent();
+		
+	case Canceled:
+		if(++CurrentSessionIndex < FoundSessions.Num())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Session Modal Closed"))
+			
+			CurrentSessionIndex = 0;
+			
+			HandleSessionModalCancelOrTimeout();
+			Menu->OnModalInteracted.Clear();
+		}
+		
+		break;
+
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("Something went wrong on Session Modal Interaction callback"));
+	}
 }

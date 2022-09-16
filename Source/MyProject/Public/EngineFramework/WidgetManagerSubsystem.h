@@ -7,7 +7,6 @@
 #include "Interfaces/SessionController.h"
 #include "WidgetManagerSubsystem.generated.h"
 
-class FOnlineSessionSearchResult;
 
 /**
  * 
@@ -27,18 +26,41 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "WidgetManager")
 	void ShowMainMenu();
 
+	UFUNCTION(BlueprintCallable, Category = "WidgetManager")
+	void ShowSessionFoundModal(class USessionFoundModal* Modal);
+	
 private:
 
 	UFUNCTION()
 	void OnSessionCreated_Callback();
-	void OnSessionFound_Callback(const TArrayView<FOnlineSessionSearchResult>& FoundSessions, bool bIsSuccessful);
-	void OnSessionJoin_Callback(FName SessionName,EOnJoinSessionCompleteResult::Type Result);
+	void OnSessionsFound_Callback(const TArrayView<class FOnlineSessionSearchResult>& Sessions, bool bIsSuccessful);
+	void OnSessionJoin_Callback(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
+
+	// SessionModal functions
+	
+	void HandleFoundSessions();
+	void HandleSessionModalCancelOrTimeout();
+
+	UFUNCTION()
+	void OnSessionInteraction_Callback(class UModalBase* Menu, enum EModalResult Result);
+
+	UFUNCTION()
+	void OnQuitButtonPressed_Callback(); 
 	
 	TSubclassOf<class UMainMenu> MainMenuClass;
+	TSubclassOf<class USessionFoundModal> SessionFoundModalClass;
+	TSubclassOf<class UModalBase> QuitGameModalClass;
+
+	UPROPERTY()
 	UMainMenu* MainMenu;
+
+	TArrayView<class FOnlineSessionSearchResult> FoundSessions;
+	int CurrentSessionIndex = 0;
 	
 	// Widget controller represent the Session Subsystem or any other class that handles the Online Subsystem
 	ISessionController* WidgetController;
 
 	
 };
+
+
